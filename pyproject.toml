@@ -1,0 +1,18 @@
+[project]
+name = "black-stories-cli"
+version = "0.1.0"
+description = "A CLI application for playing Black Stories with AI models."
+authors = [{ name = "Cline", email = "cline@example.com" }]
+dependencies = [
+    "google-generativeai",
+    "openai",
+    "anthropic",
+    "ollama",
+    "rich",
+    "python-dotenv",
+    "click",
+    "groq",
+]
+
+[tool.uv]
+dev-dependencies = []

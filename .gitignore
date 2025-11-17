@@ -1,0 +1,14 @@
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Conversation logs
+blackstory_*.md
+blackstory_*.json
+blackstory_*.txt
