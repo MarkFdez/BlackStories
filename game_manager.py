@@ -34,8 +34,8 @@ class GameManager:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # The first call to the master should have a simple prompt
-                initial_prompt = "Genera una nueva Black Story."
+                # Use the state machine prompt
+                initial_prompt = "TAREA: GENERAR"
                 response_text = self.master_model.generate_response(initial_prompt)
                 
                 # Clean the response to get only the JSON part
@@ -63,37 +63,31 @@ class GameManager:
         return None
 
     def _get_master_response(self, question):
-        """Gets a validated 'Sí/No/No relevante' response from the Master."""
-        prompt = f"""
-        Historia Secreta: "{self.secret_story}"
-        ---
-        Pregunta del Jugador: "{question}"
-        ---
-        Basado en la historia secreta, responde ESTRICTAMENTE con "Sí", "No", o "No relevante".
-        """
+        """Gets a validated 'Sí/No/No relevante' response from the Master with self-correction."""
+        prompt = f"TAREA: PREGUNTA\n\n---\nHistoria Secreta: \"{self.secret_story}\"\n---\nPregunta del Jugador: \"{question}\""
         
         max_retries = 3
-        for _ in range(max_retries):
-            response = self.master_model.generate_response(prompt).strip().lower()
-            # Clean up potential markdown or quotes
-            response = response.replace("*", "").replace("'", "").replace('"', '')
+        for i in range(max_retries):
+            response = self.master_model.generate_response(prompt).strip()
+            clean_response = response.replace("*", "").replace("'", "").replace('"', '').lower()
+
+            if clean_response in ["sí", "si"]:
+                return "Sí"
+            if clean_response == "no":
+                return "No"
+            if clean_response == "no relevante":
+                return "No relevante"
             
-            if response in ["sí", "si"]: return "Sí"
-            if response == "no": return "No"
-            if response == "no relevante": return "No relevante"
-        
-        self.console.print("[bold yellow]El Maestro dio una respuesta inválida. Se forzará 'No relevante'.[/bold yellow]")
+            # If the response is invalid, try to correct it
+            self.console.print(f"[bold yellow]Respuesta inválida del Maestro: '{response}'. Reintentando... ({i+1}/{max_retries})[/bold yellow]")
+            prompt = f"TAREA: PREGUNTA\n\n---\nTu respuesta anterior '{response}' fue inválida. Debes responder únicamente con 'Sí', 'No', o 'No relevante'.\n---\nHistoria Secreta: \"{self.secret_story}\"\n---\nPregunta del Jugador: \"{question}\""
+
+        self.console.print("[bold red]El Maestro no pudo dar una respuesta válida. Forzando 'No relevante'.[/bold red]")
         return "No relevante"
 
     def _handle_final_solution(self, solution):
         """Handles the final solution evaluation by the Master."""
-        prompt = f"""
-        Historia Secreta: "{self.secret_story}"
-        ---
-        Solución propuesta por el Jugador: "{solution}"
-        ---
-        Evalúa si la solución es correcta. Anuncia si ha acertado o fallado y revela la historia secreta completa.
-        """
+        prompt = f"TAREA: EVALUAR\n\n---\nHistoria Secreta: \"{self.secret_story}\"\n---\nSolución propuesta por el Jugador: \"{solution}\""
         final_evaluation = self.master_model.generate_response(prompt)
         
         self.console.print(Panel(f"[bold magenta]Maestro ({self.master_model.model_name}):[/bold magenta]\n{final_evaluation}", title="Evaluación Final", border_style="magenta"))
@@ -112,12 +106,12 @@ class GameManager:
 
             self.console.print(Panel(f"[bold magenta]Maestro ({self.master_model.model_name}):[/bold magenta]\n{initial_riddle}", title="Acertijo Inicial", border_style="magenta"))
             
-            last_response = initial_riddle
             turn = 1
+            conversation_history_for_player = f"Acertijo Inicial: {initial_riddle}\n\n"
 
             while True:
                 # Player's turn
-                player_prompt = f"Contexto: {last_response}\n\nBasado en el contexto, genera tu siguiente pregunta o la solución final."
+                player_prompt = f"Este es el historial de la conversación hasta ahora:\n\n{conversation_history_for_player}\n\nBasado en todo el historial, genera tu siguiente pregunta o la solución final."
                 player_question = self.player_model.generate_response(player_prompt)
                 
                 self.console.print(Panel(f"[bold cyan]Jugador ({self.player_model.model_name}):[/bold cyan]\n{player_question}", title=f"Turno {turn} - Pregunta", border_style="cyan"))
@@ -140,7 +134,9 @@ class GameManager:
                     "timestamp": datetime.now().isoformat()
                 })
                 
-                last_response = f"Mi última pregunta fue '{player_question}' y la respuesta fue '{master_answer}'."
+                # Update conversation history for the player
+                conversation_history_for_player += f"Mi pregunta fue: '{player_question}'\n"
+                conversation_history_for_player += f"La respuesta del Maestro fue: '{master_answer}'\n\n"
                 turn += 1
 
                 # Pause for user
