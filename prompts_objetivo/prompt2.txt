@@ -1,0 +1,9 @@
+Necesito reforzar el archivo game_manager.py. Actualmente existe un problema, el modelo 2,
+el que juega buscando la solución y realiza las preguntas al master, el modelo 1,
+solo recibe como contexto de la pregunta la ultima respuesta a través de la variable "last_response",
+sin embargo, quiero que el modelo reciba el contecto completo de la conversación,
+de forma que pueda procesar toda la información de la partida, desde el prompt con el misterio inicial,
+como todas sus preguntas y respuestas anteriores.
+
+Realiza los cambios necesarios, para que el jugador reciba como contexto en cada interacción el historial completo de la partida,
+de forma que pueda analizarlo para encontrar su siguiente pregunta.
