@@ -1,5 +1,6 @@
 import json
 import time
+import re
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
@@ -108,6 +109,16 @@ class GameManager:
             "speaker": "master_final", "text": final_evaluation, "timestamp": datetime.now().isoformat()
         })
 
+    def _parse_player_response(self, response_text):
+        """Parses the Player's XML response to extract Thought and Question."""
+        thought_match = re.search(r'<PENSAMIENTO>(.*?)</PENSAMIENTO>', response_text, re.DOTALL)
+        question_match = re.search(r'<PREGUNTA>(.*?)</PREGUNTA>', response_text, re.DOTALL)
+
+        thought = thought_match.group(1).strip() if thought_match else None
+        question = question_match.group(1).strip() if question_match else response_text.strip() # Fallback to full text
+
+        return thought, question
+
     def start_game(self):
         """Starts and manages the main game loop."""
         try:
@@ -122,11 +133,25 @@ class GameManager:
 
             while True:
                 player_prompt = f"Este es el historial de la conversación hasta ahora:\n\n{conversation_history_for_player}\n\nBasado en todo el historial, genera tu siguiente pregunta o la solución final."
-                player_question = self.player_model.generate_response(player_prompt)
+                raw_player_response = self.player_model.generate_response(player_prompt)
                 
+                # Parse the response
+                thought, player_question = self._parse_player_response(raw_player_response)
+
+                # Display Thought (if present)
+                if thought:
+                    self.console.print(Panel(f"[italic grey50]{thought}[/italic grey50]", title=f"Pensamiento Jugador", border_style="grey50"))
+
+                # Display Question
                 self.console.print(Panel(f"[bold cyan]Jugador ({self.player_model.model_name}):[/bold cyan]\n{player_question}", title=f"Turno {turn} - Pregunta", border_style="cyan"))
+                
+                # Log full response in history (optional: could log parsed parts separately)
                 self.history["conversation"].append({
-                    "speaker": "player", "text": player_question, "timestamp": datetime.now().isoformat()
+                    "speaker": "player", 
+                    "text": player_question, 
+                    "thought": thought,
+                    "raw_response": raw_player_response,
+                    "timestamp": datetime.now().isoformat()
                 })
 
                 if player_question.lower().startswith("respuesta:"):
