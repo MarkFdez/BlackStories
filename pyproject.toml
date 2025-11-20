@@ -16,3 +16,7 @@ dependencies = [
 
 [tool.uv]
 dev-dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["providers*"]
+exclude = ["prompts*", "prompts_objetivo*"]

@@ -1,5 +1,6 @@
 import click
 import sys
+import os
 from game_manager import GameManager
 from providers.ollama_provider import OllamaProvider
 from providers.gemini_provider import GeminiProvider
@@ -16,17 +17,29 @@ PROVIDER_MAP = {
     "grok": GrokProvider,
 }
 
-def read_character_file(filepath):
-    """Lee el contenido de un archivo de personalidad."""
+def load_prompt(file_path):
+    """Lee el contenido de un archivo de prompt específico."""
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        print(f"Error: El archivo de personaje '{filepath}' no fue encontrado.")
+        print(f"Error: El archivo de prompt requerido '{file_path}' no fue encontrado.")
         sys.exit(1)
     except Exception as e:
-        print(f"Error al leer el archivo '{filepath}': {e}")
+        print(f"Error al leer el archivo '{file_path}': {e}")
         sys.exit(1)
+
+def load_all_prompts():
+    """Carga todos los prompts necesarios desde la carpeta 'prompts/'."""
+    prompt_paths = {
+        "master_gen": "prompts/maestro_fase1_gen.txt",
+        "master_judge": "prompts/maestro_fase2_juez.txt",
+        "master_eval": "prompts/maestro_fase3_eval.txt",
+        "player": "prompts/jugador.txt",
+    }
+    
+    prompts = {key: load_prompt(path) for key, path in prompt_paths.items()}
+    return prompts
 
 def create_provider(provider_name, model_name, character_prompt):
     """Crea una instancia del proveedor de IA solicitado."""
@@ -46,25 +59,30 @@ def create_provider(provider_name, model_name, character_prompt):
 @click.command()
 @click.option('-p1', '--provider1', required=True, type=click.Choice(PROVIDER_MAP.keys()), help='Proveedor del Maestro.')
 @click.option('-m1', '--model1', required=True, help='Modelo del Maestro.')
-@click.option('-c1', '--character1', required=True, type=click.Path(exists=True), help='Ruta al prompt de sistema del Maestro.')
 @click.option('-p2', '--provider2', required=True, type=click.Choice(PROVIDER_MAP.keys()), help='Proveedor del Jugador.')
 @click.option('-m2', '--model2', required=True, help='Modelo del Jugador.')
-@click.option('-c2', '--character2', required=True, type=click.Path(exists=True), help='Ruta al prompt de sistema del Jugador.')
 @click.option('--save-format', default='md', type=click.Choice(['json', 'txt', 'md']), help='Formato para guardar el historial.')
-def main(provider1, model1, character1, provider2, model2, character2, save_format):
+def main(provider1, model1, provider2, model2, save_format):
     """
     Inicia una partida de Black Stories AI.
     """
-    # Leer los prompts de personalidad
-    prompt_maestro = read_character_file(character1)
-    prompt_jugador = read_character_file(character2)
+    # Cargar todos los prompts por convención
+    prompts = load_all_prompts()
 
     # Crear instancias de los proveedores
-    maestro_model = create_provider(provider1, model1, prompt_maestro)
-    jugador_model = create_provider(provider2, model2, prompt_jugador)
+    # El prompt inicial del maestro es irrelevante ya que se inyectará dinámicamente
+    maestro_model = create_provider(provider1, model1, "") 
+    jugador_model = create_provider(provider2, model2, prompts["player"])
 
     # Iniciar el juego
-    game = GameManager(maestro_model, jugador_model, save_format)
+    game = GameManager(
+        master_model=maestro_model,
+        player_model=jugador_model,
+        save_format=save_format,
+        prompt_master_gen=prompts["master_gen"],
+        prompt_master_judge=prompts["master_judge"],
+        prompt_master_eval=prompts["master_eval"]
+    )
     game.start_game()
 
 if __name__ == "__main__":

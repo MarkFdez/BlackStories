@@ -16,7 +16,11 @@ class GrokProvider(BaseProvider):
         # from groq import Groq
         # self.client = Groq(api_key=GROQ_API_KEY)
 
-    def generate_response(self, prompt, **kwargs):
-        # TODO: Implement the actual API call to Groq
-        print("[Warning: Grok provider is not fully implemented yet.]")
+    def generate_response(self, prompt, system_prompt=None, **kwargs):
+        # TODO: Implement the actual API call to Groq, using the system_prompt if provided
+        print("[Warning: Groq provider is not fully implemented yet.]")
         return "Placeholder response from Groq."
+
+    def clear_history(self):
+        """Grok provider is stateless in this implementation."""
+        pass

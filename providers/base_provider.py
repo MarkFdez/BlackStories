@@ -8,7 +8,7 @@ class BaseProvider(ABC):
         self.system_prompt = system_prompt
 
     @abstractmethod
-    def generate_response(self, prompt, **kwargs):
+    def generate_response(self, prompt, system_prompt=None, **kwargs):
         """
         Generates a response from the provider.
 
@@ -19,4 +19,9 @@ class BaseProvider(ABC):
         Returns:
             str: The generated response.
         """
+        pass
+
+    @abstractmethod
+    def clear_history(self):
+        """Clears the conversation history of the provider, if any."""
         pass

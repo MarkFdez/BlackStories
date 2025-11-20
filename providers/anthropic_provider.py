@@ -11,11 +11,13 @@ class AnthropicProvider(BaseProvider):
             raise ValueError("ANTHROPIC_API_KEY is not set in the environment variables.")
         self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    def generate_response(self, prompt, **kwargs):
+    def generate_response(self, prompt, system_prompt=None, **kwargs):
+        current_system_prompt = system_prompt if system_prompt else self.system_prompt
+        
         try:
             response = self.client.messages.create(
                 model=self.model_name,
-                system=self.system_prompt,
+                system=current_system_prompt,
                 messages=[
                     {"role": "user", "content": prompt},
                 ],
@@ -25,3 +27,7 @@ class AnthropicProvider(BaseProvider):
         except Exception as e:
             print(f"[Error with Anthropic provider: {e}]")
             return "Error: Could not get a response from Anthropic."
+
+    def clear_history(self):
+        """Anthropic provider is stateless in this implementation."""
+        pass

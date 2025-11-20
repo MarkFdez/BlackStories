@@ -15,10 +15,23 @@ class GeminiProvider(BaseProvider):
             system_instruction=self.system_prompt
         )
 
-    def generate_response(self, prompt, **kwargs):
+    def generate_response(self, prompt, system_prompt=None, **kwargs):
+        # Use the dynamic system prompt if provided
+        current_system_prompt = system_prompt if system_prompt else self.system_prompt
+        
+        # Re-create the client with the specific system instruction for this call
+        client = genai.GenerativeModel(
+            model_name=self.model_name,
+            system_instruction=current_system_prompt
+        )
+
         try:
-            response = self.client.generate_content(prompt)
+            response = client.generate_content(prompt)
             return response.text
         except Exception as e:
             print(f"[Error with Gemini provider: {e}]")
             return "Error: Could not get a response from Gemini."
+
+    def clear_history(self):
+        """Gemini provider is stateless in this implementation."""
+        pass
