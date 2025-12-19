@@ -127,6 +127,32 @@ class GameManager:
         question = question_match.group(1).strip() if question_match else response_text.strip() # Fallback to full text
 
         return thought, question
+    
+    def _is_final_answer(self, text):
+        """Detects if a player response is a final answer attempt."""
+        text_lower = text.lower()
+        
+        # Palabras clave que indican respuesta final
+        final_keywords = [
+            "respuesta:",
+            "respuesta final",
+            "solución final",
+            "solucion final",
+            "mi respuesta es",
+            "la respuesta es",
+            "creo que la respuesta"
+        ]
+        
+        # Buscar keywords
+        for keyword in final_keywords:
+            if keyword in text_lower:
+                return True
+        
+        # Si la respuesta es muy larga (>300 caracteres), probablemente es explicación de solución
+        if len(text) > 300:
+            return True
+            
+        return False
 
     def _generate_hint(self):
         """Generates a hint based on current game state."""
@@ -186,16 +212,31 @@ Genera UNA pista sutil para ayudar al jugador."""
             self.console.print(Panel(f"[bold magenta]Maestro ({self.master_model.model_name}):[/bold magenta]\n{initial_riddle}", title="Acertijo Inicial", border_style="magenta"))
             
             turn = 1
+            max_turns = 15  # NUEVO: Límite máximo de turnos
             conversation_history_for_player = f"Acertijo Inicial: {initial_riddle}\n\n"
             pending_hint = None  # NUEVO: Almacena pista a inyectar en próximo turno
 
             while True:
+                # NUEVO: Verificar límite de turnos
+                if turn > max_turns:
+                    self.console.print(f"\n[bold red]LÍMITE DE TURNOS ALCANZADO ({max_turns}). Forzando evaluación final...[/bold red]\n")
+                    # Forzar evaluación con lo que tenga hasta ahora
+                    forced_answer = f"RESPUESTA: Basándome en la información reunida, mi solución es la siguiente: {conversation_history_for_player[-500:]}"
+                    self._handle_final_solution(forced_answer)
+                    break
+                
                 # NUEVO: Inyectar pista si hay una pendiente
                 if pending_hint:
                     conversation_history_for_player += f"\n[*] INFORMACION ADICIONAL DESCUBIERTA:\n{pending_hint}\n\nTeniendo en cuenta esta nueva informacion, continua tu investigacion.\n\n"
                     pending_hint = None  # Resetear
                 
-                player_prompt = f"Este es el historial de la conversación hasta ahora:\n\n{conversation_history_for_player}\n\nBasado en todo el historial, genera tu siguiente pregunta o la solución final."
+                # NUEVO: Modificar prompt del jugador según el turno
+                if turn >= 13:
+                    urgency_instruction = f"\n\n[CRÍTICO] Estás en el turno {turn} de {max_turns}. DEBES intentar dar tu RESPUESTA FINAL ahora. Usa el formato: RESPUESTA: [tu explicación completa de lo que ocurrió]."
+                else:
+                    urgency_instruction = ""
+                
+                player_prompt = f"Este es el historial de la conversación hasta ahora:\n\n{conversation_history_for_player}\n\nBasado en todo el historial, genera tu siguiente pregunta o la solución final.{urgency_instruction}"
                 raw_player_response = self.player_model.generate_response(player_prompt)
                 
                 # Parse the response
@@ -217,7 +258,9 @@ Genera UNA pista sutil para ayudar al jugador."""
                     "timestamp": datetime.now().isoformat()
                 })
 
-                if player_question.lower().startswith("respuesta:"):
+                # MODIFICADO: Usar detección flexible de respuesta final
+                if self._is_final_answer(player_question):
+                    self.console.print("\n[bold green]Respuesta final detectada. Evaluando...[/bold green]\n")
                     self._handle_final_solution(player_question)
                     break
 
@@ -240,11 +283,18 @@ Genera UNA pista sutil para ayudar al jugador."""
                 conversation_history_for_player += f"La respuesta del Maestro fue: '{master_answer}'\n\n"
                 turn += 1
 
+                # MODIFICADO: Mostrar advertencia de turnos restantes
+                turns_remaining = max_turns - turn + 1
+                if turn >= 13:
+                    turn_warning = f" [QUEDAN {turns_remaining} TURNOS]"
+                else:
+                    turn_warning = ""
+
                 # NUEVO: Modificar input para aceptar comando de pista
                 if self.difficulty in ["easy", "medium"]:
-                    user_input = input("\n[Presiona Enter para continuar o escribe 'Pista' para otorgar una pista al jugador]: ").strip().lower()
+                    user_input = input(f"\n[Presiona Enter para continuar o escribe 'Pista' para otorgar una pista al jugador{turn_warning}]: ").strip().lower()
                 else:  # hard mode
-                    user_input = input("\n[Presiona Intro para el siguiente turno...]").strip().lower()
+                    user_input = input(f"\n[Presiona Intro para el siguiente turno...{turn_warning}]").strip().lower()
                 
                 # NUEVO: Procesar comando de pista
                 if self.difficulty in ["easy", "medium"] and user_input in ["pista", "hint"]:
