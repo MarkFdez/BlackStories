@@ -89,13 +89,21 @@ class CompetitiveGameManager:
                 json_str = response_text[json_start:json_end]
                 story_data = json.loads(json_str)
 
-                if "historia_secreta" in story_data and "acertijo_inicial" in story_data:
-                    self.secret_story = story_data["historia_secreta"]
-                    self.history["story"] = story_data
-                    self.master_model.clear_history()
-                    return story_data["acertijo_inicial"]
-                else:
+                # Validate that required fields exist AND are not empty
+                if "historia_secreta" not in story_data or "acertijo_inicial" not in story_data:
                     raise ValueError("El JSON recibido no tiene las claves 'historia_secreta' o 'acertijo_inicial'.")
+                
+                # Validate that historia_secreta is not empty
+                if not story_data["historia_secreta"] or not story_data["historia_secreta"].strip():
+                    raise ValueError("La 'historia_secreta' está vacía. El Maestro debe proporcionar una historia completa.")
+                
+                if not story_data["acertijo_inicial"] or not story_data["acertijo_inicial"].strip():
+                    raise ValueError("El 'acertijo_inicial' está vacío.")
+
+                self.secret_story = story_data["historia_secreta"]
+                self.history["story"] = story_data
+                self.master_model.clear_history()
+                return story_data["acertijo_inicial"]
 
             except (json.JSONDecodeError, ValueError) as e:
                 self.console.print(f"[bold red]Error al parsear el misterio del Maestro (intento {attempt + 1}/{max_retries}): {e}[/bold red]")
@@ -103,6 +111,8 @@ class CompetitiveGameManager:
                     self.console.print("[bold red]No se pudo iniciar el juego. El Maestro no proporcionó un JSON válido.[/bold red]")
                     return None
                 time.sleep(1)
+                # Clear history before retry to get fresh generation
+                self.master_model.clear_history()
         return None
     
     def _get_master_response(self, question):
@@ -135,9 +145,17 @@ class CompetitiveGameManager:
         return "No relevante"
     
     def _parse_player_response(self, response_text):
-        """Parsea la respuesta XML del jugador para extraer Pensamiento y Pregunta."""
-        thought_match = re.search(r'<PENSAMIENTO>(.*?)</PENSAMIENTO>', response_text, re.DOTALL)
-        question_match = re.search(r'<PREGUNTA>(.*?)</PREGUNTA>', response_text, re.DOTALL)
+        """Parsea la respuesta markdown del jugador para extraer Pensamiento y Pregunta.
+        
+        Espera formato:
+        **Pensamiento**
+        [contenido del pensamiento]
+        **Pregunta**
+        [contenido de la pregunta]
+        """
+        # Buscar secciones markdown (case-insensitive)
+        thought_match = re.search(r'\*\*Pensamiento\*\*\s*\n+(.*?)(?=\*\*Pregunta\*\*|$)', response_text, re.DOTALL | re.IGNORECASE)
+        question_match = re.search(r'\*\*Pregunta\*\*\s*\n+(.*?)$', response_text, re.DOTALL | re.IGNORECASE)
 
         thought = thought_match.group(1).strip() if thought_match else None
         question = question_match.group(1).strip() if question_match else response_text.strip()
