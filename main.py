@@ -146,6 +146,7 @@ def load_all_prompts(difficulty="medium"):
         "master_judge": "prompts/maestro_fase2_juez.txt",
         "master_eval": "prompts/maestro_fase3_eval.txt",
         "master_eval_competitive": "prompts/maestro_fase3_eval_competitivo.txt",
+        "master_hint": "prompts/maestro_pista.txt",
         "player": "prompts/jugador.txt",
         "player_competitive": "prompts/jugador_competitivo.txt",
     }
@@ -230,7 +231,8 @@ def main(mode, provider1, model1, provider2, model2, provider3, model3, difficul
             difficulty=normalized_difficulty,
             prompt_master_gen=prompts["master_gen"],
             prompt_master_judge=prompts["master_judge"],
-            prompt_master_eval_competitive=prompts["master_eval_competitive"]
+            prompt_master_eval_competitive=prompts["master_eval_competitive"],
+            prompt_master_hint=prompts["master_hint"]
         )
         game.start_competitive_game()
     else:

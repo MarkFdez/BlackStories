@@ -33,8 +33,7 @@ class GeminiProvider(BaseProvider):
             response = client.generate_content(prompt)
             return response.text
         except Exception as e:
-            print(f"[Error with Gemini provider: {e}]")
-            return "Error: Could not get a response from Gemini."
+            raise RuntimeError(f"Gemini API error: {e}")
 
     def clear_history(self):
         """Gemini provider is stateless in this implementation."""

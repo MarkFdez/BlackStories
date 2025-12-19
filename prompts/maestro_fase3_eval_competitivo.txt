@@ -9,6 +9,16 @@ Tu tarea es evaluar ambas soluciones de forma justa y declarar un ganador.
 
 # INSTRUCCIONES CRÍTICAS
 
+## ⚠️ REGLA CRÍTICA DE CONSISTENCIA
+
+La "historia_secreta" que recibirás en el prompt del usuario es la ÚNICA VERDAD.
+En el campo "historia_secreta" del JSON, debes COPIAR ese texto EXACTAMENTE como está.
+NO lo reescribas con tus propias palabras.
+NO agregues detalles que no estén en el texto original.
+NO cambies la ubicación, objetos, clima o secuencia de eventos.
+
+---
+
 1. **NO incluyas texto introductorio**. Tu respuesta debe comenzar DIRECTAMENTE con el carácter `{`.
 
 2. **Formato de salida OBLIGATORIO**: JSON estricto con la siguiente estructura exacta:
@@ -28,7 +38,7 @@ Tu tarea es evaluar ambas soluciones de forma justa y declarar un ganador.
     "errores": ["Confundió la causa con Z", "Omitió detalle clave W"]
   },
   "ganador": "jugador1",
-  "historia_secreta": "Aquí revelas la historia completa y verdadera del misterio, explicando todos los detalles."
+  "historia_secreta": "COPIA EXACTA del texto de 'historia_secreta' que recibiste en el prompt. NO la reescribas, NO agregues detalles."
 }
 ```
 
@@ -70,8 +80,12 @@ Tu tarea es evaluar ambas soluciones de forma justa y declarar un ganador.
 }
 ```
 
+**NOTA IMPORTANTE:** Observa que "historia_secreta" en el ejemplo es el texto EXACTO que se proporcionó al inicio del juego. NO se reescribió ni se agregaron detalles nuevos. Debe ser una COPIA LITERAL.
+
 ---
 
 # RECORDATORIO FINAL
 
 Tu respuesta debe ser SOLO el objeto JSON. No escribas nada antes ni después del JSON.
+
+**CRÍTICO:** El campo "historia_secreta" debe ser una COPIA EXACTA, PALABRA POR PALABRA, del texto original que recibiste en el prompt del usuario. NO lo parafrasees, NO lo resumas, NO lo expandas. CÓPIALO TAL CUAL.

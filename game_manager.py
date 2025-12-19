@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
+from rich.markup import escape
 import saver
 
 class GameManager:
@@ -244,10 +245,10 @@ Genera UNA pista sutil para ayudar al jugador."""
 
                 # Display Thought (if present)
                 if thought:
-                    self.console.print(Panel(f"[italic grey50]{thought}[/italic grey50]", title=f"Pensamiento Jugador", border_style="grey50"))
+                    self.console.print(Panel(f"[italic grey50]{escape(thought)}[/italic grey50]", title=f"Pensamiento Jugador", border_style="grey50"))
 
                 # Display Question
-                self.console.print(Panel(f"[bold cyan]Jugador ({self.player_model.model_name}):[/bold cyan]\n{player_question}", title=f"Turno {turn} - Pregunta", border_style="cyan"))
+                self.console.print(Panel(f"[bold cyan]Jugador ({self.player_model.model_name}):[/bold cyan]\n{escape(player_question)}", title=f"Turno {turn} - Pregunta", border_style="cyan"))
                 
                 # Log full response in history (optional: could log parsed parts separately)
                 self.history["conversation"].append({

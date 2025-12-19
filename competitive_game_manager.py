@@ -6,6 +6,7 @@ from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.markup import escape
 import saver
 
 
@@ -14,12 +15,13 @@ class CompetitiveGameManager:
     
     def __init__(self, master_model, player1_model, player2_model, save_format="md", 
                  difficulty="medium", prompt_master_gen="", prompt_master_judge="", 
-                 prompt_master_eval_competitive=""):
+                 prompt_master_eval_competitive="", prompt_master_hint=""):
         self.master_model = master_model
         self.player_models = [player1_model, player2_model]
         self.current_player_index = random.choice([0, 1])  # Inicio aleatorio
         self.save_format = save_format
         self.difficulty = difficulty
+        self.no_counter = 0  # Contador de respuestas "No" (para pistas automáticas en modo fácil)
         self.console = Console()
         self.secret_story = ""
         
@@ -27,6 +29,7 @@ class CompetitiveGameManager:
         self.prompt_master_gen = prompt_master_gen
         self.prompt_master_judge = prompt_master_judge
         self.prompt_master_eval_competitive = prompt_master_eval_competitive
+        self.prompt_master_hint = prompt_master_hint
         
         # Historia adaptada para modo competitivo
         self.history = {
@@ -118,6 +121,9 @@ class CompetitiveGameManager:
             if clean_response in ["sí", "si"]: 
                 return "Sí"
             if clean_response == "no": 
+                # Incrementar contador solo en modo fácil (para pistas automáticas)
+                if self.difficulty == "easy":
+                    self.no_counter += 1
                 return "No"
             if clean_response == "no relevante": 
                 return "No relevante"
@@ -160,6 +166,51 @@ class CompetitiveGameManager:
             return True
             
         return False
+    
+    def _generate_hint(self):
+        """Genera una pista basada en el estado actual del juego (compartida para ambos jugadores)."""
+        # Construir resumen de conversación
+        conversation_summary = ""
+        for entry in self.history["conversation"]:
+            if entry["speaker"].startswith("player"):
+                player_num = entry["speaker"][-1]
+                conversation_summary += f"Jugador {player_num}: {entry['text']}\n"
+            elif entry["speaker"] == "master":
+                conversation_summary += f"Maestro: {entry['text']}\n"
+        
+        prompt = f"""TAREA: GENERAR PISTA
+
+---
+Historia Secreta: "{self.secret_story}"
+---
+Historial de Conversación:
+{conversation_summary}
+---
+
+Genera UNA pista sutil para ayudar a los jugadores."""
+
+        try:
+            hint_text = self.master_model.generate_response(
+                prompt,
+                system_prompt=self.prompt_master_hint
+            ).strip()
+            
+            self.master_model.clear_history()  # Limpiar para no contaminar
+            return hint_text
+        except Exception as e:
+            self.console.print(f"[bold red]Error al generar pista: {e}[/bold red]")
+            return None
+    
+    def _display_hint(self, hint_text):
+        """Muestra una pista a ambos jugadores con formato distintivo."""
+        self.console.print("\n" + "=" * 60)
+        self.console.print(Panel(
+            f"[bold yellow]{hint_text}[/bold yellow]",
+            title="💡 PISTA COMPARTIDA PARA AMBOS JUGADORES",
+            border_style="yellow",
+            expand=False
+        ))
+        self.console.print("=" * 60 + "\n")
     
     def _build_shared_context(self, initial_riddle):
         """Construye el contexto compartido visible para ambos jugadores."""
@@ -318,10 +369,16 @@ Solución Jugador 2: "{solution2}"
             turn = 1
             MAX_TURNS = 16
             solutions = [None, None]  # Almacenar soluciones de cada jugador
+            pending_hint = None  # Pista pendiente de inyectar en próximo turno
             
             while turn <= MAX_TURNS:
                 # Construir contexto compartido
                 shared_context = self._build_shared_context(initial_riddle)
+                
+                # Inyectar pista si hay una pendiente
+                if pending_hint:
+                    shared_context += f"\n\n[💡] INFORMACIÓN ADICIONAL DESCUBIERTA:\n{pending_hint}\n\nTeniendo en cuenta esta nueva información, continúa tu investigación.\n\n"
+                    pending_hint = None  # Resetear
                 
                 # Advertencias de turno crítico
                 if turn == 13:
@@ -339,7 +396,34 @@ Solución Jugador 2: "{solution2}"
                     urgency = ""
                 
                 player_prompt = f"{shared_context}\n\nGenera tu siguiente pregunta o solución final.{urgency}"
-                raw_response = current_player.generate_response(player_prompt)
+                
+                # NUEVO: Retry logic con 3 intentos para errores de conexión
+                max_retries = 3
+                raw_response = None
+                for attempt in range(max_retries):
+                    try:
+                        raw_response = current_player.generate_response(player_prompt)
+                        break  # Éxito, salir del loop
+                    except RuntimeError as e:
+                        self.console.print(f"[bold red]⚠️  Error de conexión Jugador {player_num} (intento {attempt + 1}/{max_retries}): {e}[/bold red]")
+                        if attempt == max_retries - 1:
+                            # Después de 3 intentos, declarar victoria técnica
+                            other_player_num = 3 - player_num
+                            self.console.print(f"\n[bold red]❌ ERROR CRÍTICO: Jugador {player_num} perdió conexión después de {max_retries} intentos[/bold red]")
+                            self.console.print(f"[bold green]🏆 VICTORIA TÉCNICA: Jugador {other_player_num} gana por desconexión del oponente[/bold green]\n")
+                            
+                            # Guardar en historial
+                            self.history["conversation"].append({
+                                "speaker": "system",
+                                "text": f"Jugador {player_num} desconectado. Victoria técnica para Jugador {other_player_num}",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            return  # Terminar partida
+                        time.sleep(2)  # Esperar 2 segundos antes de reintentar
+                
+                if raw_response is None:
+                    # Esto no debería ocurrir, pero por seguridad
+                    continue
                 
                 # Parse respuesta
                 thought, question = self._parse_player_response(raw_response)
@@ -348,13 +432,13 @@ Solución Jugador 2: "{solution2}"
                 border_colors = ["cyan", "green"]
                 if thought:
                     self.console.print(Panel(
-                        f"[italic grey50]{thought}[/italic grey50]",
+                        f"[italic grey50]{escape(thought)}[/italic grey50]",
                         title=f"💭 Pensamiento Jugador {player_num}",
                         border_style="grey50"
                     ))
                 
                 self.console.print(Panel(
-                    f"[bold {border_colors[self.current_player_index]}]Jugador {player_num} ({current_player.model_name}):[/bold {border_colors[self.current_player_index]}]\n{question}",
+                    f"[bold {border_colors[self.current_player_index]}]Jugador {player_num} ({current_player.model_name}):[/bold {border_colors[self.current_player_index]}]\n{escape(question)}",
                     title=f"Turno {turn} - Jugador {player_num}",
                     border_style=border_colors[self.current_player_index]
                 ))
@@ -387,7 +471,7 @@ Solución Jugador 2: "{solution2}"
                     
                     # Mostrar solución forzada
                     self.console.print(Panel(
-                        f"[bold {border_colors[other_player_index]}]Jugador {other_player_num} (forzado):[/bold {border_colors[other_player_index]}]\n{forced_solution}",
+                        f"[bold {border_colors[other_player_index]}]Jugador {other_player_num} (forzado):[/bold {border_colors[other_player_index]}]\n{escape(forced_solution)}",
                         title=f"Solución Forzada - Jugador {other_player_num}",
                         border_style=border_colors[other_player_index]
                     ))
@@ -435,12 +519,41 @@ Solución Jugador 2: "{solution2}"
                     "timestamp": datetime.now().isoformat()
                 })
                 
+                # NUEVO: Verificar si se debe generar pista automática (solo modo fácil)
+                if self.difficulty == "easy" and self.no_counter >= 2 and pending_hint is None:
+                    self.console.print("[bold yellow]Se han acumulado 2 respuestas 'No'. Generando pista automática compartida...[/bold yellow]")
+                    hint_text = self._generate_hint()
+                    if hint_text:
+                        self._display_hint(hint_text)
+                        pending_hint = hint_text
+                    self.no_counter = 0  # Resetear contador
+                
                 # Alternar jugador
                 self._switch_player()
                 turn += 1
                 
-                # Pause para observar
-                input("\n[Presiona Enter para continuar al siguiente turno...]")
+                # NUEVO: Prompt para pistas manuales (fácil y medio)
+                if self.difficulty in ["easy", "medium"]:
+                    user_input = input(f"\n[Presiona Enter para continuar o escribe 'Pista' para otorgar una pista compartida]: ").strip().lower()
+                else:  # hard mode
+                    user_input = input(f"\n[Presiona Enter para continuar al siguiente turno...]\n").strip().lower()
+                
+                # NUEVO: Procesar comando de pista
+                if self.difficulty in ["easy", "medium"] and user_input in ["pista", "hint"]:
+                    # Evitar duplicar si ya hay pista automática pendiente
+                    if pending_hint is None:
+                        self.console.print("[bold yellow]Generando pista manual compartida...[/bold yellow]")
+                        hint_text = self._generate_hint()
+                        if hint_text:
+                            self._display_hint(hint_text)
+                            pending_hint = hint_text
+                        # Resetear contador automático si está activo
+                        if self.difficulty == "easy":
+                            self.no_counter = 0
+                    else:
+                        self.console.print("[bold yellow]Ya hay una pista pendiente de inyectar en el próximo turno.[/bold yellow]")
+                # En modo hard, ignorar silenciosamente
+                
                 self.console.print("---" * 20)
         
         except KeyboardInterrupt:

@@ -26,8 +26,7 @@ class OllamaProvider(BaseProvider):
             )
             return response["message"]["content"]
         except Exception as e:
-            print(f"[Error with Ollama provider: {e}]")
-            return "Error: Could not get a response from Ollama."
+            raise RuntimeError(f"Ollama connection error: {e}")
 
     def clear_history(self):
         """No history is stored, so this does nothing."""

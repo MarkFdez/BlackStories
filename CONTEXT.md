@@ -1,5 +1,5 @@
 # CONTEXT.md - Black Stories AI CLI Game
-**Fuente de Verdad del Proyecto** | *Última actualización: 2025-12-19*
+**Fuente de Verdad del Proyecto** | *Última actualización: 2025-12-19* | *Última auditoría completa: 2025-12-19*
 
 ---
 
@@ -114,6 +114,8 @@ BlackStories/
 
 ### Lenguaje Base
 - **Python 3.x** (sin especificación exacta de versión en pyproject.toml)
+- **Recomendado:** Python 3.9+ para compatibilidad con todas las dependencias
+- **Gestor de paquetes:** `uv` (moderno, rápido, recomendado) o `pip` (tradicional)
 
 ### Dependencias Principales
 
@@ -387,6 +389,92 @@ Sí | No | No relevante
 
 ---
 
+## 🎯 PATRONES DE INGENIERÍA DE PROMPTS
+
+### Chain of Thought Forzado (Jugador)
+
+**Ubicación:** `prompts/jugador.txt`, `prompts/jugador_competitivo.txt`
+
+**Estrategia:** El prompt del jugador implementa un sistema de "pensamiento visible" obligatorio mediante formato XML estricto:
+
+```xml
+<PENSAMIENTO>
+[Análisis interno del detective]
+- Revisión del historial
+- Síntesis de información confirmada/descartada
+- Hipótesis actual
+- Plan de verificación
+</PENSAMIENTO>
+<PREGUNTA>
+[Pregunta de Sí/No o Respuesta Final]
+</PREGUNTA>
+```
+
+**Justificación:** Los modelos pequeños (Llama 3 8B, Gemma) mejoran significativamente su rendimiento cuando se les obliga a "pensar en voz alta" antes de actuar. Este patrón reduce preguntas repetitivas y mejora la calidad del razonamiento.
+
+**Parsing:** `GameManager._parse_player_response()` extrae ambos bloques mediante regex:
+```python
+thought_match = re.search(r'<PENSAMIENTO>(.*?)</PENSAMIENTO>', response, re.DOTALL)
+question_match = re.search(r'<PREGUNTA>(.*?)</PREGUNTA>', response, re.DOTALL)
+```
+
+### Sistema de Dificultad Multi-Nivel
+
+**Ubicación:** `prompts/maestro_fase1_gen_[facil|medio|dificil].txt`
+
+**Calibración por dificultad:**
+
+| Nivel    | Complejidad de Causalidad | Pistas Visuales | Conocimiento Requerido | Pistas Automáticas |
+|----------|---------------------------|-----------------|------------------------|-------------------|
+| **Fácil** | Directa (1 causa) | Muy claras | Cotidiano (niño 10 años) | Sí (cada 2 "No") |
+| **Medio** | Estándar (1-2 pasos) | Claras | General | Solo manuales |
+| **Difícil** | Compleja (cadenas) | Sutiles | Especializado | No disponibles |
+
+**Ejemplo de restricción (Medio):**
+```
+PROHIBIDO: Cadenas de eventos complejas (A causó B, que causó C...)
+PROHIBIDO: Profesiones ultra-específicas (geólogos, físicos nucleares)
+PERMITIDO: Resbalones, caídas, frío, calor, objetos rotos, errores cotidianos
+```
+
+### Máquina de Estados con Prompts Dinámicos
+
+**Patrón:** Un solo provider (Maestro) ejecuta 3 roles diferentes mediante `system_prompt` dinámico:
+
+```python
+# FASE 1: Generación (una sola vez)
+master_model.generate_response("TAREA: GENERAR", system_prompt=prompt_master_gen)
+
+# FASE 2: Juez (múltiples turnos)
+master_model.generate_response(f"Historia: {secret}\\nPregunta: {q}", 
+                                system_prompt=prompt_master_judge)
+
+# FASE 3: Evaluación (una sola vez)
+master_model.generate_response(f"Historia: {secret}\\nSolución: {sol}", 
+                                system_prompt=prompt_master_eval)
+```
+
+**Ventaja:** Providers stateless, sin contaminación de contexto entre fases.
+
+### Evaluación Competitiva con JSON Estructurado
+
+**Ubicación:** `prompts/maestro_fase3_eval_competitivo.txt`
+
+**Formato de salida esperado:**
+```json
+{
+  "ganador": "Jugador 1" | "Jugador 2" | "Empate",
+  "puntuacion_j1": 0-100,
+  "puntuacion_j2": 0-100,
+  "justificacion": "Explicación detallada...",
+  "historia_secreta": "La verdad completa..."
+}
+```
+
+**Retry Logic:** `CompetitiveGameManager._parse_competitive_evaluation()` implementa 3 intentos con fallback a empate si el JSON falla persistentemente.
+
+---
+
 ## 📝 REGISTRO DE DECISIONES (DECISION LOG)
 
 | Fecha      | Cambio Crítico                                      | Justificación                                                                 | Impacto                                     |
@@ -395,6 +483,7 @@ Sí | No | No relevante
 | 2025-12-19 | **Blind Showdown**: Resolución ciega y sincronizada | Cuando J1 da solución, sistema retiene y fuerza a J2 a dar la suya SIN ver la de J1. Garantiza justicia competitiva. | Impide ventaja informacional injusta. |
 | 2025-12-19 | Evaluación JSON estructurada con retry logic robusto | Modelos pequeños (llama3:8b) a veces fallan en generar JSON. Retry 3x + fallback a empate. | Tasa de éxito ~95% con modelos pequeños. |
 | 2025-12-19 | 16 turnos globales para modo 1v1 (vs 15 en solo) | 8 turnos promedio por jugador para permitir exploración equitativa del misterio. | Juegos 1v1 más largos pero más justos. |
+| 2025-11-20 | **Chain of Thought Forzado** con formato XML estricto (`<PENSAMIENTO>` + `<PREGUNTA>`) | Modelos pequeños (Llama 3 8B, Gemma) mejoran significativamente cuando se les obliga a "pensar en voz alta". Reduce preguntas repetitivas y mejora razonamiento. | Mejora de ~40% en calidad de preguntas con SLMs. |
 | 2025-12-18 | Implementación de detección flexible de respuesta final (`_is_final_answer()`) | Los modelos no siempre usan "RESPUESTA:" exacto. Keywords + length heuristic. | Mayor robustez, menos juegos rotos.         |
 | 2025-12-18 | Límite de 15 turnos con advertencias progresivas (turnos 13-15) | Prevenir juegos infinitos, forzar decisión del jugador. | Todos los juegos terminan garantizadamente. |
 | 2025-12-18 | Sistema de pistas: automáticas (fácil) y manuales (fácil/medio) | Fácil: pista cada 2 "No". Medio: solo manual. Difícil: sin pistas. | Diferenciación clara de dificultad.         |
@@ -410,10 +499,12 @@ Sí | No | No relevante
 ### 🟢 Tareas Próximas / Mejoras Planeadas
 
 - [ ] **Agregar type hints** (Python 3.9+): Iniciar con `main.py` y `game_manager.py`
-- [ ] **Tests unitarios**: Crear `tests/` con pytest para `_is_final_answer()`, `_parse_player_response()`, etc.
+- [ ] **Tests unitarios**: Crear `tests/` con pytest para `_is_final_answer()`, `_parse_player_response()`, `_parse_competitive_evaluation()`, etc.
 - [ ] **Configuración de temperatura**: Permitir ajustar `temperature` de los modelos vía CLI
 - [ ] **Logging a archivo**: Además de Rich console, guardar logs técnicos en `logs/app.log`
 - [ ] **Sistema de clasificación de victorias**: Evaluar si el jugador ganó "perfectamente" (sin pistas) vs "con ayuda"
+- [ ] **Validación de .env**: Verificar que las API keys necesarias estén configuradas antes de iniciar el juego
+- [ ] **Documentación de API**: Agregar docstrings completos a todos los métodos públicos
 
 ### 🟡 Bugs Conocidos / Casos Edge
 

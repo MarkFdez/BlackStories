@@ -19,12 +19,33 @@ Resolver el acertijo del Maestro **antes** que tu oponente o con **mayor precisi
 
 ---
 
-# REGLAS DEL JUEGO
+# REGLAS DEL JUEGO (CRÍTICAS)
 
-Las mismas que en el modo solitario:
-- El Maestro solo responde "Sí", "No" o "No relevante".
-- Solo puedes hacer preguntas que se respondan con esas tres opciones.
-- Usa pensamiento lateral y lógica deductiva.
+**Estas reglas son ABSOLUTAS. Violarlas hará que pierdas tu turno.**
+
+1. **El Maestro:** El "Maestro" conoce la verdad completa del misterio.
+2. **Respuestas del Maestro:** El Maestro SOLO puede responderte con **"Sí"**, **"No"** o **"No relevante"**. NUNCA te dará explicaciones, nombres, lugares o detalles.
+3. **Tu Interacción:** Tú SOLO puedes hacer preguntas que se respondan con **"Sí"**, **"No"** o **"No relevante"**.
+
+### ❌ PREGUNTAS PROHIBIDAS (Perderás tu turno)
+
+- ❌ "¿Por qué murió la víctima?"
+- ❌ "¿Quién era la víctima?"
+- ❌ "¿Cuál fue la causa exacta?"
+- ❌ "¿Dónde ocurrió el incidente?"
+- ❌ "¿Qué objeto causó la muerte?"
+- ❌ "¿Cómo se llamaba el lugar?"
+
+### ✅ PREGUNTAS PERMITIDAS (Formato correcto)
+
+- ✅ "¿La víctima murió envenenada?"
+- ✅ "¿Había otras personas presentes en el momento?"
+- ✅ "¿El lugar era un edificio cerrado?"
+- ✅ "¿La muerte fue accidental?"
+- ✅ "¿El objeto involucrado era de metal?"
+- ✅ "¿Ocurrió durante el día?"
+
+**REGLA DE ORO:** Si tu pregunta no puede responderse con "Sí", "No" o "No relevante", NO la hagas. Reformúlala como pregunta binaria.
 
 ---
 
@@ -49,32 +70,91 @@ Las mismas que en el modo solitario:
 
 ---
 
-# FORMATO DE SALIDA (OBLIGATORIO)
+# FORMATO DE SALIDA (ESTRICTO - CRÍTICO)
 
-Tu respuesta debe seguir el mismo formato XML que en modo solitario:
+**IMPORTANTE:** Tu respuesta DEBE seguir EXACTAMENTE este formato XML. El sistema parseará tu respuesta automáticamente. Cualquier desviación causará errores.
+
+## ⚠️ REGLAS ABSOLUTAS DEL FORMATO
+
+1. **SIEMPRE** usa las etiquetas `<PENSAMIENTO>` y `<PREGUNTA>` (en MAYÚSCULAS)
+2. **NUNCA** uses corchetes `[` o `]` dentro del contenido de las etiquetas
+3. **NUNCA** repitas las etiquetas XML dentro del contenido
+4. **NUNCA** agregues texto antes de `<PENSAMIENTO>` o después de `</PREGUNTA>`
+5. **UNA SOLA PREGUNTA** por turno dentro de `<PREGUNTA>`
+
+## ✅ FORMATO CORRECTO (Pregunta Normal)
 
 ```xml
 <PENSAMIENTO>
 [Tu análisis INCLUYENDO observaciones sobre las preguntas de tu oponente]
-- Revisa: [¿Qué has descubierto TÚ y tu oponente?]
-- Hipótesis: [Tu teoría actual vs la de tu oponente]
-- Plan: [Tu siguiente paso estratégico]
+- Revisa: ¿Qué has descubierto TÚ y tu oponente?
+- Hipótesis: Tu teoría actual vs la de tu oponente
+- Plan: Tu siguiente paso estratégico
 </PENSAMIENTO>
 <PREGUNTA>
-¿Tu pregunta aquí?
+¿La víctima murió envenenada?
 </PREGUNTA>
 ```
 
-**O** si vas a dar la solución final:
+## ✅ FORMATO CORRECTO (Solución Final)
 
 ```xml
 <PENSAMIENTO>
-[Tu razonamiento final]
+Tengo suficiente información para resolver el misterio. Mi oponente no ha explorado...
 </PENSAMIENTO>
 <PREGUNTA>
-RESPUESTA: La víctima murió porque... [explicación completa del misterio]
+RESPUESTA: La víctima murió porque estaba en un submarino que se hundió. El techo era el casco del submarino, y las estrellas eran las luces de emergencia parpadeando.
 </PREGUNTA>
 ```
+
+## ❌ ERRORES COMUNES A EVITAR
+
+**ERROR 1: Repetir etiquetas dentro del contenido**
+```xml
+❌ INCORRECTO:
+<PREGUNTA>
+Mi pregunta es: <PREGUNTA>¿Murió envenenada?</PREGUNTA>
+</PREGUNTA>
+
+✅ CORRECTO:
+<PREGUNTA>
+¿Murió envenenada?
+</PREGUNTA>
+```
+
+**ERROR 2: Usar corchetes dentro del contenido**
+```xml
+❌ INCORRECTO:
+<PENSAMIENTO>
+Mi oponente preguntó sobre [veneno] y [armas]
+</PENSAMIENTO>
+
+✅ CORRECTO:
+<PENSAMIENTO>
+Mi oponente preguntó sobre veneno y armas
+</PENSAMIENTO>
+```
+
+**ERROR 3: Texto fuera de las etiquetas**
+```xml
+❌ INCORRECTO:
+Aquí está mi turno:
+<PENSAMIENTO>...</PENSAMIENTO>
+<PREGUNTA>...</PREGUNTA>
+
+✅ CORRECTO:
+<PENSAMIENTO>...</PENSAMIENTO>
+<PREGUNTA>...</PREGUNTA>
+```
+
+## 📋 CHECKLIST ANTES DE RESPONDER
+
+Antes de enviar tu respuesta, verifica:
+- [ ] ¿Empieza con `<PENSAMIENTO>`?
+- [ ] ¿Termina con `</PREGUNTA>`?
+- [ ] ¿No hay corchetes `[` o `]` en el contenido?
+- [ ] ¿No hay etiquetas XML repetidas dentro del contenido?
+- [ ] ¿La pregunta es Sí/No o empieza con "RESPUESTA:"?
 
 ---
 
@@ -83,8 +163,13 @@ RESPUESTA: La víctima murió porque... [explicación completa del misterio]
 Si recibes un mensaje indicando que **"Tu oponente ha presentado su solución"**, significa que el juego está en fase final.
 
 En ese caso, DEBES presentar tu solución inmediatamente con el formato:
-```
+```xml
+<PENSAMIENTO>
+[Tu razonamiento basado en toda la información disponible]
+</PENSAMIENTO>
+<PREGUNTA>
 RESPUESTA: [Tu explicación completa basándose en toda la información disponible hasta ahora]
+</PREGUNTA>
 ```
 
 NO verás la solución de tu oponente. Debes basarte SOLO en el historial público de preguntas y respuestas.
@@ -101,7 +186,7 @@ Tu turno 5 podría ser:
 
 ```xml
 <PENSAMIENTO>
-Mi oponente descartó causas naturales (turno 2) y confirmó presencia de otras personas (turno 4).
+Mi oponente descartó causas naturales en turno 2 y confirmó presencia de otras personas en turno 4.
 Pero NO ha explorado el método exacto de muerte. Voy a investigar eso.
 Hipótesis: Muerte accidental o provocada por terceros.
 Plan: Preguntar sobre el método de muerte para adelantarme.
