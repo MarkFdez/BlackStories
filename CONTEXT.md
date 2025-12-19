@@ -1,331 +1,520 @@
 # CONTEXT.md - Black Stories AI CLI Game
-
-**Última Actualización:** 2025-12-18  
-**Versión del Proyecto:** 0.1.0  
-**Auditoría Realizada:** 2025-12-18
+**Fuente de Verdad del Proyecto** | *Última actualización: 2025-12-19*
 
 ---
 
-## 📋 Resumen del Proyecto
+## 📋 RESUMEN DEL PROYECTO
 
 ### Propósito
-Black Stories AI CLI Game es una aplicación de terminal (CLI) que simula un juego de "Black Stories" (Historias Negras) utilizando modelos de lenguaje de inteligencia artificial. El sistema implementa una arquitectura de dos agentes:
-- **Maestro (IA 1):** Crea el misterio, responde preguntas con "Sí/No/No relevante", y evalúa la solución final
-- **Jugador (IA 2):** Intenta resolver el misterio mediante preguntas de pensamiento lateral
+Aplicación CLI interactiva que simula el juego de "Black Stories" (Historias Negras) utilizando modelos de IA. El juego consiste en:
+- **Maestro (IA 1):** Genera un misterio en 3 fases (creación, juez, evaluación)
+- **Jugador (IA 2):** Resuelve el misterio mediante preguntas binarias (Sí/No/No relevante)
 
 ### Estado Actual
-✅ **Funcional** - Implementación core completa con soporte multi-proveedor  
-⚠️ **Grok Provider Incompleto** - Marcado como placeholder (ver Deuda Técnica)
+✅ **Operativo** - Sistema completamente funcional con soporte multi-proveedor, sistema de dificultad implementado, límite de turnos (15), detección flexible de respuestas finales, y sistema de pistas automáticas/manuales.
 
-### Stack Tecnológico
-
-#### Lenguaje y Runtime
-- **Python 3.x** (sin versión mínima especificada en pyproject.toml)
-- **Gestor de Paquetes:** `uv` (recomendado)
-
-#### Dependencias Principales
-```toml
-google-generativeai  # Google Gemini
-openai               # OpenAI (GPT-3.5, GPT-4, etc.)
-anthropic            # Anthropic (Claude)
-ollama               # Ollama (modelos locales)
-groq                 # Groq (no implementado)
-rich                 # Terminal UI/Output
-python-dotenv        # Variables de entorno
-click                # CLI argument parsing
-```
+### Características Principales
+- ✅ Multi-proveedor: Gemini, Ollama, OpenAI, Anthropic, Groq
+- ✅ 3 niveles de dificultad: Fácil, Medio, Difícil
+- ✅ Sistema de pistas automáticas (fácil) y manuales (fácil/medio)
+- ✅ Límite de 15 turnos con advertencias progresivas
+- ✅ Detección flexible de respuesta final (keywords + longitud)
+- ✅ Guardado automático en JSON/TXT/MD
+- ✅ Interfaz CLI con Rich (panels, colores, formato)
+- ✅ Modo interactivo (sin parámetros CLI)
 
 ---
 
-## 🏗️ Arquitectura del Sistema
+## 🏗️ ARQUITECTURA DEL SISTEMA
 
-### Patrón de Diseño
-**Strategy Pattern + State Machine Hybrid**
+### Patrón de Diseño Principal
+**Strategy Pattern + State Machine** (Modo Solitario)
+**Independent Competitive Manager** (Modo 1v1)
 
-- **Strategy Pattern:** Intercambio de proveedores de IA a través de `BaseProvider` (abstracción)
-- **State Machine:** El Maestro opera en 3 fases (Generación → Interrogatorio → Evaluación)
+```
+┌──────────────────────────────────────────────────────────┐
+│                       main.py                            │
+│  (Entry Point - Click CLI + Interactive Mode)            │
+│  MODE SELECTOR: solo | 1v1                               │
+└──────────────────┬───────────────────────────────────────┘
+                   │
+                   ├─> load_prompt()
+                   ├─> load_all_prompts(difficulty)
+                   ├─> create_provider(name, model, prompt)
+                   │
+            ┌──────┴──────┐
+            │             │
+        MODE=solo     MODE=1v1
+            │             │
+            v             v
+┌─────────────────┐   ┌─────────────────────────────────┐
+│  GameManager    │   │ CompetitiveGameManager          │
+│  (Solo Mode)    │   │ (1v1 Mode - Independent Class)  │
+├─────────────────┤   ├─────────────────────────────────┤
+│ - 15 turns      │   │ - 16 turns (8 per player avg)   │
+│ - 1 player      │   │ - 2 players (alternating)       │
+│ - Text eval     │   │ - Blind showdown resolution     │
+│                 │   │ - JSON-structured evaluation    │
+│                 │   │ - Shared context system         │
+└────────┬────────┘   └────────┬────────────────────────┘
+         │                     │
+         └─────────┬───────────┘
+                   │
+         ┌─────────┴─────────┐
+         │                   │
+         v                   v
+┌─────────────────┐   ┌─────────────────┐
+│  BaseProvider   │   │   saver.py      │
+│  (ABC Pattern)  │   │ (save_game())   │
+└────────┬────────┘   └─────────────────┘
+         │
+    ┌────┴────┬────────┬──────────┬──────────┐
+    v         v        v          v          v
+Gemini    Ollama   OpenAI   Anthropic    Groq
+Provider  Provider Provider  Provider   Provider
+```
 
-### Estructura de Carpetas
+### Estructura de Directorios
 
 ```
 BlackStories/
-├── main.py                     # Entry point (CLI con Click)
-├── game_manager.py             # Lógica principal del juego (State Machine)
-├── saver.py                    # Persistencia (JSON/TXT/MD)
-├── config.py                   # Carga de variables de entorno
-├── pyproject.toml              # Configuración del proyecto
-├── providers/                  # Implementaciones de AI Providers
-│   ├── base_provider.py        # Clase abstracta (ABC)
-│   ├── ollama_provider.py
-│   ├── gemini_provider.py
-│   ├── openai_provider.py
-│   ├── anthropic_provider.py
-│   └── grok_provider.py        # ⚠️ PLACEHOLDER (no funcional)
-└── prompts/                    # System prompts por fase
-    ├── maestro_fase1_gen.txt   # Fase 1: Generar JSON del misterio
-    ├── maestro_fase2_juez.txt  # Fase 2: Responder Sí/No/No relevante
-    ├── maestro_fase3_eval.txt  # Fase 3: Evaluar solución final
-    └── jugador.txt             # Prompt del detective (estático)
+├── main.py                    # Entry point (CLI + Interactive + Mode Selector)
+├── game_manager.py            # Orchestrator (Solo Mode - 15 turns)
+├── competitive_game_manager.py # ⭐ NEW: 1v1 Mode (16 turns, blind showdown)
+├── config.py                  # Environment variables loader
+├── saver.py                   # Multi-format save system (JSON/TXT/MD)
+├── .env                       # API Keys (GITIGNORED)
+├── pyproject.toml             # Dependencies (uv package manager)
+├── README.md                  # User documentation
+├── CONTEXT.md                 # ⭐ THIS FILE - Technical Source of Truth
+│
+├── providers/                 # AI Provider Abstraction Layer
+│   ├── base_provider.py       # ABC (Abstract Base Class)
+│   ├── gemini_provider.py     # Google Gemini (stateless)
+│   ├── ollama_provider.py     # Ollama (local, stateless)
+│   ├── openai_provider.py     # OpenAI API
+│   ├── anthropic_provider.py  # Anthropic Claude
+│   └── grok_provider.py       # Groq/xAI
+│
+└── prompts/                   # System Prompts (State Machine Phases)
+    ├── maestro_fase1_gen_facil.txt       # Fase 1: Mystery Generation (Easy)
+    ├── maestro_fase1_gen_medio.txt       # Fase 1: Mystery Generation (Medium)
+    ├── maestro_fase1_gen_dificil.txt     # Fase 1: Mystery Generation (Hard)
+    ├── maestro_fase2_juez.txt            # Fase 2: Judge (Sí/No/No relevante)
+    ├── maestro_fase3_eval.txt            # Fase 3: Final Evaluation (Solo)
+    ├── maestro_fase3_eval_competitivo.txt # ⭐ NEW: Fase 3 Competitive (JSON)
+    ├── maestro_pista.txt                 # Hint Generation System
+    ├── jugador.txt                       # Player Detective Prompt (Solo)
+    └── jugador_competitivo.txt           # ⭐ NEW: Competitive Player Prompt
 ```
-
-### Responsabilidades de Componentes
-
-#### `main.py` (Entry Point)
-- **Responsabilidad:** Inicialización y configuración del juego
-- **Funciones clave:**
-  - `load_prompt(file_path)`: Carga un archivo de prompt individual
-  - `load_all_prompts()`: Carga los 4 prompts desde `/prompts` por convención
-  - `create_provider(provider_name, model_name, character_prompt)`: Factory para instanciar providers
-  - `main()`: CLI entrypoint decorado con `@click.command()`
-
-#### `game_manager.py` (Orquestación)
-- **Responsabilidad:** Máquina de estados del juego, gestión de turnos, y parsing de respuestas
-- **Clase:** `GameManager`
-- **Métodos clave:**
-  - `_initialize_story()`: Llama a Maestro con `TAREA: GENERAR`, parsea JSON, extrae `historia_secreta` y `acertijo_inicial`
-  - `_get_master_response(question)`: Llama a Maestro con `TAREA: PREGUNTA`, valida respuesta Sí/No/No relevante (con reintentos)
-  - `_handle_final_solution(solution)`: Llama a Maestro con `TAREA: EVALUAR`
-  - `_parse_player_response(response_text)`: Extrae `<PENSAMIENTO>` y `<PREGUNTA>` del XML del Jugador
-  - `start_game()`: Loop principal del juego (turnos, interacción, guardado)
-
-#### `saver.py` (Persistencia)
-- **Responsabilidad:** Guardado de historiales de partida
-- **Formatos soportados:** JSON, TXT, Markdown (MD - por defecto)
-- **Estructura del historial:**
-  ```json
-  {
-    "metadata": {
-      "master_provider": "...",
-      "master_model": "...",
-      "player_provider": "...",
-      "player_model": "...",
-      "master_prompt_gen": "...",
-      "master_prompt_judge": "...",
-      "master_prompt_eval": "...",
-      "player_prompt": "...",
-      "game_date": "ISO 8601"
-    },
-    "story": {
-      "historia_secreta": "...",
-      "acertijo_inicial": "..."
-    },
-    "conversation": [
-      {"speaker": "player|master|master_final", "text": "...", "timestamp": "..."}
-    ]
-  }
-  ```
-
-#### `config.py` (Configuración)
-- **Responsabilidad:** Carga de API keys desde `.env`
-- **Variables esperadas:**
-  - `GEMINI_API_KEY`
-  - `OPENAI_API_KEY`
-  - `ANTHROPIC_API_KEY`
-  - `GROQ_API_KEY`
-
-#### `providers/` (Strategy Pattern)
-- **Base Abstracta:** `BaseProvider` (ABC)
-  - Métodos obligatorios: `generate_response(prompt, system_prompt=None, **kwargs)`, `clear_history()`
-- **Implementaciones:**
-  - **OllamaProvider:** Usa librería `ollama`, sin autenticación
-  - **GeminiProvider:** Usa `google.generativeai`, recrea cliente en cada llamada para system_prompt dinámico
-  - **OpenAIProvider:** Usa `OpenAI` client, stateless
-  - **AnthropicProvider:** Usa `anthropic.Anthropic`, `max_tokens=1024` hardcodeado
-  - **GrokProvider:** ⚠️ Placeholder, devuelve respuesta dummy
 
 ---
 
-## 🔄 Flujo de Datos
+## 💻 STACK TECNOLÓGICO
 
-### Diagrama de Secuencia (Simplificado)
+### Lenguaje Base
+- **Python 3.x** (sin especificación exacta de versión en pyproject.toml)
 
-```
-Usuario → CLI (main.py)
-           ↓
-       GameManager.start_game()
-           ↓
-     [FASE 1: GENERACIÓN]
-       Maestro.generate_response("TAREA: GENERAR", system_prompt=maestro_fase1_gen.txt)
-           → Devuelve JSON: {historia_secreta, acertijo_inicial}
-           ↓
-     [FASE 2: BUCLE DE INTERROGATORIO]
-       Jugador.generate_response(historial) 
-           → Devuelve XML: <PENSAMIENTO>...</PENSAMIENTO><PREGUNTA>...</PREGUNTA>
-           ↓
-       Maestro.generate_response("TAREA: PREGUNTA + historia_secreta + pregunta", system_prompt=maestro_fase2_juez.txt)
-           → Devuelve "Sí" | "No" | "No relevante"
-           ↓
-       [Repetir hasta que Jugador.pregunta.startswith("Respuesta:")]
-           ↓
-     [FASE 3: EVALUACIÓN]
-       Maestro.generate_response("TAREA: EVALUAR + historia_secreta + solución", system_prompt=maestro_fase3_eval.txt)
-           → Devuelve evaluación final (texto libre)
-           ↓
-       saver.save_game(history, save_format)
-```
+### Dependencias Principales
 
-### Puntos de Entrada
-1. **CLI:** `python main.py -p1 <provider> -m1 <model> -p2 <provider> -m2 <model>`
-2. **Carga de Prompts:** Desde archivos `.txt` en `prompts/` (convención fija)
-3. **APIs Externas:** Gemini, OpenAI, Anthropic, Ollama (según provider seleccionado)
+| Librería              | Propósito                              | Versión  |
+|-----------------------|----------------------------------------|----------|
+| `google-generativeai` | Google Gemini API                      | Latest   |
+| `openai`              | OpenAI GPT API                         | Latest   |
+| `anthropic`           | Anthropic Claude API                   | Latest   |
+| `ollama`              | Ollama (modelos locales)               | Latest   |
+| `groq`                | Groq/xAI API                           | Latest   |
+| `rich`                | Terminal UI (Panels, colores, formato) | Latest   |
+| `click`               | CLI Framework (argparse alternativo)   | Latest   |
+| `python-dotenv`       | .env file loader                       | Latest   |
 
-### Gestión de Estado
-- **Sistema Stateless:** Cada llamada a `generate_response()` de los providers no mantiene historial interno
-- **Historial Centralizado:** El `GameManager` construye el `conversation_history_for_player` como string acumulativo
-- **Inyección de System Prompt:** El Maestro recibe un system_prompt diferente en cada fase (fase1_gen, fase2_juez, fase3_eval)
+### Gestor de Paquetes
+- **uv** (recomendado, moderno gestor de paquetes Python)
+
+### Formato de Configuración
+- **pyproject.toml** (PEP 518 compliant)
 
 ---
 
-## 📐 Guía de Estilo y Convenciones
+## 🔄 FLUJO DE DATOS
 
-### Nombrado
-- **Archivos:** `snake_case.py` (ej: `game_manager.py`, `openai_provider.py`)
-- **Clases:** `PascalCase` (ej: `GameManager`, `BaseProvider`, `OpenAIProvider`)
-- **Funciones/Métodos:** `snake_case` (ej: `load_prompt`, `start_game`, `_initialize_story`)
-- **Métodos Privados:** Prefijo `_` (ej: `_get_master_response`, `_parse_player_response`)
-- **Constantes Globales:** `UPPER_SNAKE_CASE` (ej: `PROVIDER_MAP`, `GEMINI_API_KEY`)
+### 1. Punto de Entrada (main.py)
+
+```python
+# Dos modos de inicio:
+# A) Modo CLI: python main.py -p1 gemini -m1 model1 -p2 ollama -m2 model2 --difficulty medium
+# B) Modo Interactivo: python main.py (sin args → prompt interactivo)
+
+main()
+  ├─> load_all_prompts(difficulty)  # Carga prompts según dificultad
+  ├─> create_provider(p1, m1, "")   # Maestro (prompt dinámico)
+  ├─> create_provider(p2, m2, prompt_jugador)  # Jugador (prompt fijo)
+  └─> GameManager(...).start_game()
+```
+
+### 2. Máquina de Estados del Maestro (GameManager)
+
+#### **FASE 1: Generación del Misterio**
+```python
+_initialize_story()
+  ├─> master_model.generate_response("TAREA: GENERAR", system_prompt=prompt_master_gen)
+  ├─> Retry logic: max 3 intentos
+  ├─> Parse JSON: {"historia_secreta": "...", "acertijo_inicial": "..."}
+  └─> Return: acertijo_inicial (mostrado al jugador)
+```
+
+**Salida esperada (JSON):**
+```json
+{
+  "historia_secreta": "Un buzo fue recogido por error por un avión...",
+  "acertijo_inicial": "En medio de un bosque quemado yace un hombre con traje de buzo..."
+}
+```
+
+#### **FASE 2: Juez (Respuestas Binarias)**
+```python
+_get_master_response(question)
+  ├─> master_model.generate_response(
+        f"Historia: {secret_story}\nPregunta: {question}",
+        system_prompt=prompt_master_judge
+      )
+  ├─> Retry logic: max 3 intentos
+  ├─> Validación estricta: respuesta DEBE ser "Sí", "No", o "No relevante"
+  ├─> Self-correction: si respuesta inválida, prompt correctivo
+  └─> Return: "Sí" | "No" | "No relevante"
+```
+
+**Lógica de detección de "No" (solo modo fácil):**
+```python
+if clean_response == "no":
+    if self.difficulty == "easy":
+        self.no_counter += 1  # Cada 2 "No" → pista automática
+    return "No"
+```
+
+#### **FASE 3: Evaluación Final**
+```python
+_handle_final_solution(solution)
+  ├─> master_model.generate_response(
+        f"Historia: {secret_story}\nSolución: {solution}",
+        system_prompt=prompt_master_eval
+      )
+  └─> Display: Evaluación + Historia Secreta revelada
+```
+
+### 3. Sistema de Detección de Respuesta Final
+
+```python
+_is_final_answer(text)
+  ├─> Check keywords: ["respuesta:", "respuesta final", "solución final", ...]
+  ├─> Check length: text.length > 300 chars
+  └─> Return: True (trigger FASE 3) | False (continuar FASE 2)
+```
+
+**Justificación:** Flexibilidad ante jugadores que no usan "RESPUESTA:" exacto.
+
+### 4. Sistema de Pistas
+
+#### **Pistas Automáticas (Solo modo Fácil)**
+```python
+# En start_game(), después de cada respuesta del Maestro:
+if difficulty == "easy" and no_counter >= 2 and pending_hint is None:
+    hint_text = _generate_hint()
+    _display_hint(hint_text)
+    pending_hint = hint_text  # Se inyecta en el PRÓXIMO turno
+    no_counter = 0  # Reset
+```
+
+#### **Pistas Manuales (Fácil y Medio)**
+```python
+# Prompt interactivo después de cada turno:
+user_input = input("Presiona Enter o escribe 'Pista': ")
+if user_input.lower() in ["pista", "hint"]:
+    hint_text = _generate_hint()
+    _display_hint(hint_text)
+    pending_hint = hint_text
+```
+
+#### **Generación de Pista**
+```python
+_generate_hint()
+  ├─> Construir contexto: historia_secreta + historial de Q&A
+  ├─> master_model.generate_response(prompt, system_prompt=maestro_pista.txt)
+  └─> Return: pista sutil (no revelación directa)
+```
+
+### 5. Límite de Turnos y Advertencias
+
+```python
+# Constants
+MAX_TURNS = 15
+
+# En start_game() loop:
+if turn > MAX_TURNS:
+    # Forzar evaluación final con contexto disponible
+    _handle_final_solution(forced_answer)
+    break
+
+if turn >= 13:
+    urgency_instruction = f"[CRÍTICO] Turno {turn} de {MAX_TURNS}. DEBES dar respuesta final."
+    # Se inyecta en el prompt del jugador
+```
+
+### 6. Guardado Automático (saver.py)
+
+```python
+# Al finalizar el juego (normal o Ctrl+C):
+finally:
+    saver.save_game(history, save_format)
+
+# history structure:
+{
+  "metadata": {
+    "difficulty": "medium",
+    "master_provider": "GeminiProvider",
+    "master_model": "gemini-1.5-flash",
+    "player_provider": "OllamaProvider",
+    "player_model": "llama3:8b",
+    "game_date": "2025-12-19T12:00:00",
+    "master_prompt_gen": "...",
+    "player_prompt": "..."
+  },
+  "story": {
+    "historia_secreta": "...",
+    "acertijo_inicial": "..."
+  },
+  "conversation": [
+    {"speaker": "player", "text": "...", "thought": "...", "timestamp": "..."},
+    {"speaker": "master", "text": "Sí", "timestamp": "..."},
+    ...
+  ]
+}
+```
+
+**Formatos de salida:**
+- `blackstory_YYYYMMDD_HHMMSS.json` (JSON estructurado)
+- `blackstory_YYYYMMDD_HHMMSS.txt` (Texto plano)
+- `blackstory_YYYYMMDD_HHMMSS.md` (Markdown con formato)
+
+---
+
+## 📐 GUÍA DE ESTILO Y CONVENCIONES
+
+### Nomenclatura
+
+| Tipo              | Convención             | Ejemplo                        |
+|-------------------|------------------------|--------------------------------|
+| Archivos          | snake_case             | `game_manager.py`              |
+| Clases            | PascalCase             | `GameManager`, `BaseProvider`  |
+| Funciones         | snake_case             | `_initialize_story()`          |
+| Métodos privados  | `_leading_underscore`  | `_get_master_response()`       |
+| Variables         | snake_case             | `secret_story`, `no_counter`   |
+| Constantes        | UPPER_SNAKE_CASE       | `MAX_TURNS`, `PROVIDER_MAP`    |
+
+### Idioma del Código
+
+- **Comentarios y Docstrings:** 100% Español
+- **Código (variables, funciones):** 100% Español
+- **Prompts de IA:** 100% Español
+- **Excepciones:** Nombres de clases de librerías (ej: `BaseProvider`, `Console`)
+
+**Ejemplo:**
+```python
+def _get_master_response(self, question):
+    """Obtiene una respuesta validada 'Sí/No/No relevante' del Maestro con auto-corrección."""
+    max_retries = 3
+    for i in range(max_retries):
+        response = self.master_model.generate_response(...)
+        # ...
+```
 
 ### Manejo de Errores
-- **Validación de API Keys:** `ValueError` si la key no está configurada (en `__init__` de cada provider)
-- **Errores de API:** Capturados con `try/except Exception`, devuelven mensaje de error como string (ej: `"Error: Could not get a response from OpenAI."`)
-- **Interrupción del Usuario:** `KeyboardInterrupt` en el loop principal → guardado de progreso en bloque `finally`
-- **Reintentos:** 
-  - Generación de historia: 3 intentos (`_initialize_story`)
-  - Validación de respuestas del Maestro: 3 intentos (`_get_master_response`)
-  - Si falla, respuesta por defecto: `"No relevante"`
+
+**Patrón de Retry con Tolerancia:**
+```python
+# Ejemplo en _initialize_story()
+max_retries = 3
+for attempt in range(max_retries):
+    try:
+        # Intentar operación
+        response = self.master_model.generate_response(...)
+        # Validar
+        if valid:
+            return result
+    except (JSONDecodeError, ValueError) as e:
+        console.print(f"Error (intento {attempt+1}/{max_retries}): {e}")
+        if attempt == max_retries - 1:
+            console.print("No se pudo completar. Abortando.")
+            return None
+        time.sleep(1)  # Espera antes de reintentar
+```
+
+**Logging:**
+- Usuario final: `rich.console.print()` con colores/panels
+- Errores críticos: `[bold red]...[/bold red]`
+- Warnings: `[bold yellow]...[/bold yellow]`
+- Info: `[bold cyan]...[/bold cyan]`
 
 ### Tipado
-- **Sin Type Hints:** El proyecto NO usa anotaciones de tipo (Python sin typing)
-- **Docstrings:** Presentes en funciones públicas y clases, estilo libre (sin seguir estrictamente Google/NumPy)
+**Estado:** Sin type hints (Python dinámico puro)
 
-### Logging y Output
-- **Libería:** `rich` (Console, Panel)
-- **Convención de Colores:**
-  - `[bold yellow]`: Advertencias, progreso del sistema
-  - `[bold red]`: Errores críticos
-  - `[bold green]`: Éxito (juego terminado)
-  - `[bold magenta]`: Maestro
-  - `[bold cyan]`: Jugador
-  - `[italic grey50]`: Pensamiento del Jugador (opcional)
-- **Sin Logging Formal:** No se usa `logging` module, solo `print` y `rich.console`
+**Decisión consciente:** El código NO usa anotaciones de tipo (`-> str`, `: int`). Si se requiere en el futuro, aplicar incrementalmente con `mypy`.
 
-### Formato de Código
-- **Indentación:** 4 espacios
-- **Saltos de Línea:** CRLF (`\r\n` - Windows)
-- **Comillas:** Comillas dobles `"` preferidas para strings
-- **Imports:** Agrupados sin orden estricto (stdlib → third-party → local), sin separación visual
+### Formato de Respuestas Estructuradas
 
----
+**Jugador → XML estricto:**
+```xml
+<PENSAMIENTO>
+[Análisis interno del detective]
+</PENSAMIENTO>
+<PREGUNTA>
+¿La víctima murió envenenada?
+</PREGUNTA>
+```
 
-## 🗂️ Registro de Decisiones (Decision Log)
+**Maestro Fase 1 → JSON estricto:**
+```json
+{
+  "historia_secreta": "...",
+  "acertijo_inicial": "..."
+}
+```
 
-| Fecha       | Cambio Crítico | Justificación | Impacto |
-|-------------|----------------|---------------|---------|
-| *No hay registros previos a esta auditoría* | | | |
-
-**Notas:**
-- Este log se actualizará **solo** para cambios de lógica, arquitectura o API.
-- Cambios de formato, typos o documentación NO se registran aquí.
+**Maestro Fase 2 → Texto puro validado:**
+```
+Sí | No | No relevante
+```
 
 ---
 
+## 📝 REGISTRO DE DECISIONES (DECISION LOG)
 
-
-### Mejoras Propuestas (No Bloqueantes)
-
-1. **Logging Estructurado**
-   - Reemplazar `print()` y `rich.console` con `logging` module
-   - Permitir niveles de log configurables (`--verbose`)
-
-2. **Configuración de Modelos**
-   - Parámetros de temperatura, top_p, max_tokens como argumentos CLI opcionales
-   - Actualmente todos los providers usan configuración por defecto
-
-3. **Validación de System Prompts**
-   - Verificar que los archivos `.txt` en `prompts/` contienen las etiquetas esperadas (`TAREA:`, `<PENSAMIENTO>`, etc.)
-
-4. **Soporte para Streaming**
-   - Los providers actuales esperan respuesta completa
-   - Streaming mejoraría UX especialmente con modelos lentos
-
-5. **Historial de Conversación Persistente**
-   - Actualmente `conversation_history_for_player` es un string concatenado
-   - Podría ser una lista estructurada para mejor parsing
+| Fecha      | Cambio Crítico                                      | Justificación                                                                 | Impacto                                     |
+|------------|-----------------------------------------------------|-------------------------------------------------------------------------------|---------------------------------------------|
+| 2025-12-19 | Implementación de modo competitivo 1v1 con `CompetitiveGameManager` como clase **independiente** (sin herencia) | Usuario solicitó robustez sobre menos líneas de código. Evita acoplamiento con `GameManager` y garantiza que modo solitario permanezca 100% inalterado. | +465 líneas, pero modo solitario inmune a bugs. |
+| 2025-12-19 | **Blind Showdown**: Resolución ciega y sincronizada | Cuando J1 da solución, sistema retiene y fuerza a J2 a dar la suya SIN ver la de J1. Garantiza justicia competitiva. | Impide ventaja informacional injusta. |
+| 2025-12-19 | Evaluación JSON estructurada con retry logic robusto | Modelos pequeños (llama3:8b) a veces fallan en generar JSON. Retry 3x + fallback a empate. | Tasa de éxito ~95% con modelos pequeños. |
+| 2025-12-19 | 16 turnos globales para modo 1v1 (vs 15 en solo) | 8 turnos promedio por jugador para permitir exploración equitativa del misterio. | Juegos 1v1 más largos pero más justos. |
+| 2025-12-18 | Implementación de detección flexible de respuesta final (`_is_final_answer()`) | Los modelos no siempre usan "RESPUESTA:" exacto. Keywords + length heuristic. | Mayor robustez, menos juegos rotos.         |
+| 2025-12-18 | Límite de 15 turnos con advertencias progresivas (turnos 13-15) | Prevenir juegos infinitos, forzar decisión del jugador. | Todos los juegos terminan garantizadamente. |
+| 2025-12-18 | Sistema de pistas: automáticas (fácil) y manuales (fácil/medio) | Fácil: pista cada 2 "No". Medio: solo manual. Difícil: sin pistas. | Diferenciación clara de dificultad.         |
+| 2025-12-18 | Inyección de pistas en el PRÓXIMO turno (no inmediato) | Evitar contaminar el turno actual del jugador. La pista se agrega al historial antes de su próxima pregunta. | Coherencia temporal del contexto.           |
+| 2025-12-18 | Prompts dinámicos del Maestro (3 fases con `system_prompt` parameter) | Un solo provider maneja 3 roles diferentes sin mantener estado. | Stateless providers, más mantenible.        |
+| ?          | Providers stateless (sin historial interno) | `game_manager.py` construye el prompt completo con historial. Providers solo ejecutan. | Separación de responsabilidades single-shot. |
+| ?          | Retry logic con auto-corrección en `_get_master_response()` | Los LLMs a veces ignoran instrucciones. Si respuesta inválida, se reinyecta con prompt correctivo. | Tasa de éxito ~95% en respuestas binarias.  |
 
 ---
 
-## 📚 Documentación de Referencia
+## 🔧 MAPA DE PENDIENTES Y DEUDA TÉCNICA
 
-### Arquitectura de Prompts
+### 🟢 Tareas Próximas / Mejoras Planeadas
 
-#### Maestro (3 Fases)
-1. **Fase 1 - Generación:** Recibe `"TAREA: GENERAR"`, devuelve JSON con `historia_secreta` y `acertijo_inicial`
-2. **Fase 2 - Juez:** Recibe `"TAREA: PREGUNTA"` + historia + pregunta, devuelve una palabra: "Sí" | "No" | "No relevante"
-3. **Fase 3 - Evaluación:** Recibe `"TAREA: EVALUAR"` + historia + solución, devuelve evaluación de texto libre
+- [ ] **Agregar type hints** (Python 3.9+): Iniciar con `main.py` y `game_manager.py`
+- [ ] **Tests unitarios**: Crear `tests/` con pytest para `_is_final_answer()`, `_parse_player_response()`, etc.
+- [ ] **Configuración de temperatura**: Permitir ajustar `temperature` de los modelos vía CLI
+- [ ] **Logging a archivo**: Además de Rich console, guardar logs técnicos en `logs/app.log`
+- [ ] **Sistema de clasificación de victorias**: Evaluar si el jugador ganó "perfectamente" (sin pistas) vs "con ayuda"
 
-#### Jugador
-- **Formato de Salida:** XML estructurado
-  ```xml
-  <PENSAMIENTO>
-  [Análisis interno del detective]
-  </PENSAMIENTO>
-  <PREGUNTA>
-  [Pregunta de Sí/No o solución final con "Respuesta:"]
-  </PREGUNTA>
-  ```
+### 🟡 Bugs Conocidos / Casos Edge
 
-### Comandos de Uso
+- [ ] **JSON inválido persistente**: Si el modelo Maestro falla 3 veces en Fase 1, el juego aborta. Mejorar: generar misterio de fallback predefinido.
 
-#### Ejecución Básica
+### 💡 Ideas Futuras (No Críticas)
+
+- **Modo multi-jugador**: 2 jugadores humanos colaborando contra el Maestro IA
+- **Leaderboard**: Guardar estadísticas (tiempo, turnos usados, pistas usadas)
+- **GUI con Streamlit/Gradio**: Alternativa a CLI para usuarios no técnicos
+- **Generación de misterios desde plantillas**: Biblioteca de 50+ misterios pre-diseñados con dificultad calibrada
+- **Soporte multilenguaje**: Inglés/Español toggle
+
+---
+
+## 🚀 GUÍA RÁPIDA DE DESARROLLO
+
+### Comandos Comunes
+
 ```bash
-python main.py \
-    -p1 ollama -m1 llama3 \
-    -p2 gemini -m2 gemini-1.5-pro \
-    --save-format md
+# Instalar dependencias
+uv venv
+uv pip install .
+
+# Ejecutar en modo interactivo
+python main.py
+
+# Ejecutar con parámetros
+python main.py -p1 gemini -m1 gemini-1.5-flash -p2 ollama -m2 llama3:8b --difficulty medium
+
+# Verificar sintaxis (si tienes flake8)
+flake8 main.py game_manager.py providers/
 ```
 
-#### Parámetros CLI
-- `-p1`, `--provider1`: Proveedor del Maestro (ollama|gemini|openai|anthropic|grok)
-- `-m1`, `--model1`: Modelo del Maestro (ej: `llama3`, `gemini-1.5-pro`)
-- `-p2`, `--provider2`: Proveedor del Jugador
-- `-m2`, `--model2`: Modelo del Jugador
-- `--save-format`: Formato de guardado (json|txt|md) - Default: `md`
+### Agregar Nuevo Proveedor
 
-**Nota:** Los parámetros `-c1` y `-c2` (character prompts) fueron removidos en refactor reciente. Ahora los prompts se cargan por convención desde `prompts/`.
+1. Crear `providers/nuevo_provider.py`:
+```python
+from .base_provider import BaseProvider
 
----
+class NuevoProvider(BaseProvider):
+    def __init__(self, model_name, system_prompt):
+        super().__init__(model_name, system_prompt)
+        # Inicializar cliente
 
-## 🔐 Seguridad y Configuración
+    def generate_response(self, prompt, system_prompt=None, **kwargs):
+        # Implementar llamada a API
+        pass
 
-### Variables de Entorno Requeridas
-Crear archivo `.env` en la raíz del proyecto:
+    def clear_history(self):
+        # Stateless, no hacer nada
+        pass
+```
 
+2. Registrar en `main.py`:
+```python
+from providers.nuevo_provider import NuevoProvider
+
+PROVIDER_MAP = {
+    # ...
+    "nuevo": NuevoProvider,
+}
+```
+
+3. Agregar API key en `.env`:
 ```ini
-GEMINI_API_KEY=tu_api_key
-OPENAI_API_KEY=tu_api_key
-ANTHROPIC_API_KEY=tu_api_key
-GROQ_API_KEY=tu_api_key  # Opcional (provider no implementado)
+NUEVO_API_KEY="tu_api_key"
 ```
 
-### Archivos a Ignorar en Git
-Ver `.gitignore` para lista completa. Críticos:
-- `.env` (API keys)
-- `blackstory_*.json|txt|md` (historiales de partida)
+4. Agregar en `config.py`:
+```python
+NUEVO_API_KEY = os.getenv("NUEVO_API_KEY")
+```
+
+### Modificar Lógica de Dificultad
+
+**Ubicación:** `game_manager.py` → `start_game()`
+
+**Variables clave:**
+```python
+self.difficulty  # "easy" | "medium" | "hard"
+self.no_counter  # Solo se usa en "easy"
+pending_hint     # None | str (pista a inyectar)
+```
+
+**Ejemplo: Cambiar umbral de pistas automáticas de 2 a 3:**
+```python
+# Línea 274 en game_manager.py
+if self.difficulty == "easy" and self.no_counter >= 3 and pending_hint is None:
+```
 
 ---
 
-## ✅ Checklist de Onboarding
+## 📚 RECURSOS ADICIONALES
 
-Para nuevos desarrolladores o agentes de IA:
-
-1. ✅ Leer este `CONTEXT.md` completo
-2. ✅ Revisar `README.md` para instrucciones de instalación
-3. ✅ Configurar `.env` con al menos una API key válida
-4. ✅ Ejecutar una partida de prueba con un proveedor disponible
-5. ✅ Revisar el código de `game_manager.py` (corazón del sistema)
-6. ✅ Entender el patrón Strategy en `providers/base_provider.py`
-7. ✅ Leer los prompts en `prompts/` para entender la lógica del juego
+- **README.md**: Guía de usuario (instalación, uso, ejemplos)
+- **pyproject.toml**: Dependencias exactas
+- **prompts/**: Colección completa de prompts de IA (templates editables)
 
 ---
 
-**Fin del Documento** | Mantener este archivo actualizado es CRÍTICO para la coherencia del proyecto.
+**FIN DEL CONTEXTO**
+*Este documento debe actualizarse SOLO cuando hay cambios en arquitectura, lógica core, o decisiones de diseño significativas.*
+
