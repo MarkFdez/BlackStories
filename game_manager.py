@@ -7,11 +7,13 @@ from rich.panel import Panel
 import saver
 
 class GameManager:
-    def __init__(self, master_model, player_model, save_format="md", 
+    def __init__(self, master_model, player_model, save_format="md", difficulty="medium",
                  prompt_master_gen="", prompt_master_judge="", prompt_master_eval=""):
         self.master_model = master_model
         self.player_model = player_model
         self.save_format = save_format
+        self.difficulty = difficulty
+        self.no_counter = 0  # Contador de respuestas "No" (solo para modo fácil)
         self.console = Console()
         self.secret_story = ""
         
@@ -22,6 +24,7 @@ class GameManager:
 
         self.history = {
             "metadata": {
+                "difficulty": difficulty,
                 "master_provider": master_model.__class__.__name__,
                 "master_model": master_model.model_name,
                 "player_provider": player_model.__class__.__name__,
@@ -86,9 +89,15 @@ class GameManager:
             ).strip()
             clean_response = response.replace("*", "").replace("'", "").replace('"', '').lower()
 
-            if clean_response in ["sí", "si"]: return "Sí"
-            if clean_response == "no": return "No"
-            if clean_response == "no relevante": return "No relevante"
+            if clean_response in ["sí", "si"]: 
+                return "Sí"
+            if clean_response == "no": 
+                # NUEVO: Incrementar contador solo en modo fácil
+                if self.difficulty == "easy":
+                    self.no_counter += 1
+                return "No"
+            if clean_response == "no relevante": 
+                return "No relevante"
             
             self.console.print(f"[bold yellow]Respuesta inválida del Maestro: '{response}'. Reintentando... ({i+1}/{max_retries})[/bold yellow]")
             prompt = f"TAREA: PREGUNTA\n\n---\nTu respuesta anterior '{response}' fue inválida. Debes responder únicamente con 'Sí', 'No', o 'No relevante'.\n---\nHistoria Secreta: \"{self.secret_story}\"\n---\nPregunta del Jugador: \"{question}\""
@@ -119,6 +128,54 @@ class GameManager:
 
         return thought, question
 
+    def _generate_hint(self):
+        """Generates a hint based on current game state."""
+        # Construir contexto para el Maestro
+        conversation_summary = ""
+        for entry in self.history["conversation"]:
+            if entry["speaker"] == "player":
+                conversation_summary += f"Pregunta: {entry['text']}\n"
+            elif entry["speaker"] == "master":
+                conversation_summary += f"Respuesta: {entry['text']}\n"
+        
+        prompt = f"""TAREA: GENERAR PISTA
+
+---
+Historia Secreta: "{self.secret_story}"
+---
+Historial de Conversación:
+{conversation_summary}
+---
+
+Genera UNA pista sutil para ayudar al jugador."""
+
+        try:
+            # Cargar prompt de pistas
+            with open("prompts/maestro_pista.txt", "r", encoding="utf-8") as f:
+                hint_prompt = f.read()
+            
+            hint_text = self.master_model.generate_response(
+                prompt,
+                system_prompt=hint_prompt
+            ).strip()
+            
+            self.master_model.clear_history()  # Limpiar para no contaminar
+            return hint_text
+        except Exception as e:
+            self.console.print(f"[bold red]Error al generar pista: {e}[/bold red]")
+            return None
+
+    def _display_hint(self, hint_text):
+        """Displays a hint to the observer with distinctive formatting."""
+        self.console.print("\n" + "=" * 60)
+        self.console.print(Panel(
+            f"[bold yellow]{hint_text}[/bold yellow]",
+            title="[*] PISTA OTORGADA AL JUGADOR",
+            border_style="yellow",
+            expand=False
+        ))
+        self.console.print("=" * 60 + "\n")
+
     def start_game(self):
         """Starts and manages the main game loop."""
         try:
@@ -130,8 +187,14 @@ class GameManager:
             
             turn = 1
             conversation_history_for_player = f"Acertijo Inicial: {initial_riddle}\n\n"
+            pending_hint = None  # NUEVO: Almacena pista a inyectar en próximo turno
 
             while True:
+                # NUEVO: Inyectar pista si hay una pendiente
+                if pending_hint:
+                    conversation_history_for_player += f"\n[*] INFORMACION ADICIONAL DESCUBIERTA:\n{pending_hint}\n\nTeniendo en cuenta esta nueva informacion, continua tu investigacion.\n\n"
+                    pending_hint = None  # Resetear
+                
                 player_prompt = f"Este es el historial de la conversación hasta ahora:\n\n{conversation_history_for_player}\n\nBasado en todo el historial, genera tu siguiente pregunta o la solución final."
                 raw_player_response = self.player_model.generate_response(player_prompt)
                 
@@ -164,11 +227,41 @@ class GameManager:
                     "speaker": "master", "text": master_answer, "timestamp": datetime.now().isoformat()
                 })
                 
+                # NUEVO: Verificar si se debe generar pista automática
+                if self.difficulty == "easy" and self.no_counter >= 2 and pending_hint is None:
+                    self.console.print("[bold yellow]Se han acumulado 2 respuestas 'No'. Generando pista automática...[/bold yellow]")
+                    hint_text = self._generate_hint()
+                    if hint_text:
+                        self._display_hint(hint_text)
+                        pending_hint = hint_text
+                    self.no_counter = 0  # Resetear contador
+                
                 conversation_history_for_player += f"Mi pregunta fue: '{player_question}'\n"
                 conversation_history_for_player += f"La respuesta del Maestro fue: '{master_answer}'\n\n"
                 turn += 1
 
-                input("\n[Presiona Intro para el siguiente turno...]")
+                # NUEVO: Modificar input para aceptar comando de pista
+                if self.difficulty in ["easy", "medium"]:
+                    user_input = input("\n[Presiona Enter para continuar o escribe 'Pista' para otorgar una pista al jugador]: ").strip().lower()
+                else:  # hard mode
+                    user_input = input("\n[Presiona Intro para el siguiente turno...]").strip().lower()
+                
+                # NUEVO: Procesar comando de pista
+                if self.difficulty in ["easy", "medium"] and user_input in ["pista", "hint"]:
+                    # Evitar duplicar si ya hay pista automática pendiente
+                    if pending_hint is None:
+                        self.console.print("[bold yellow]Generando pista manual...[/bold yellow]")
+                        hint_text = self._generate_hint()
+                        if hint_text:
+                            self._display_hint(hint_text)
+                            pending_hint = hint_text
+                        # Resetear contador automático si está activo
+                        if self.difficulty == "easy":
+                            self.no_counter = 0
+                    else:
+                        self.console.print("[bold yellow]Ya hay una pista pendiente de inyectar en el próximo turno.[/bold yellow]")
+                # En modo hard, ignorar silenciosamente (no hacer nada si escribe "pista")
+                
                 self.console.print("---" * 20)
 
         except KeyboardInterrupt:

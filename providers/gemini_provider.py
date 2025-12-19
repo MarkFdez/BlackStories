@@ -10,10 +10,14 @@ class GeminiProvider(BaseProvider):
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set in the environment variables.")
         genai.configure(api_key=GEMINI_API_KEY)
-        self.client = genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=self.system_prompt
-        )
+        # Don't create client with empty system_instruction (Gemini rejects it)
+        if self.system_prompt:
+            self.client = genai.GenerativeModel(
+                model_name=self.model_name,
+                system_instruction=self.system_prompt
+            )
+        else:
+            self.client = genai.GenerativeModel(model_name=self.model_name)
 
     def generate_response(self, prompt, system_prompt=None, **kwargs):
         # Use the dynamic system prompt if provided

@@ -1,0 +1,46 @@
+**Objetivo Principal:** Refactorizar la clase `GameManager` para implementar la **Máquina de Estados del Maestro (M1)**, asegurando que los modelos menos potentes sigan reglas estrictas y no confundan su rol.
+
+---
+
+## **1\. Contexto y Problema**
+
+Hemos actualizado el **Prompt de Sistema del Maestro (`maestro_prompt.txt`)** para que actúe como una **Máquina de Estados de 3 Fases**. Esto es crucial para la estabilidad, ya que modelos más simples (como Gemma 3\) a menudo confunden sus tareas.
+
+El Maestro ya no es un chat continuo, sino que responde a **"Modos de Tarea"**. Necesitamos que el código Python actúe como el **Interruptor de Modo** para cada fase.
+
+---
+
+## **2\. Nuevo Protocolo de Comunicación**
+
+El protocolo que debe implementarse es el uso de la etiqueta `TAREA:` al inicio de cualquier prompt que se envíe al Maestro:
+
+| Fase del Juego | Método de `GameManager` | Etiqueta de Tarea a Enviar | Contexto Inyectado |
+| :---- | :---- | :---- | :---- |
+| **Inicio del Juego** (Creación) | `_initialize_story` | `TAREA: GENERAR` | Ninguno (el Maestro crea la historia) |
+| **Bucle de Preguntas** (Juzgar) | `_get_master_response` | `TAREA: PREGUNTA` | `self.secret_story` \+ `player_question` |
+| **Evaluación Final** (Resolver) | `_handle_final_solution` | `TAREA: EVALUAR` | `self.secret_story` \+ `player_solution` |
+
+Exportar a Hojas de cálculo  
+---
+
+## **3\. Tareas de Implementación Específicas**
+
+Necesitamos refactorizar los siguientes métodos para soportar este nuevo protocolo, asegurando que las reglas de cada fase se cumplan.
+
+### **3.1. `_initialize_story` (TAREA: GENERAR)**
+
+* **Implementación:** Reemplaza el *prompt* simple por **`"TAREA: GENERAR"`**.  
+* **Motivo:** Esto activa la **Fase 1 (Generación JSON)** en el *prompt* de M1, asegurando que el modelo se enfoque en el formato estructurado y no en una respuesta conversacional.
+
+### **3.2. `_get_master_response` (TAREA: PREGUNTA)**
+
+* **Implementación:** Refactoriza el método para construir el prompt inyectando la `self.secret_story` y la `player_question`, precedidas por **`"TAREA: PREGUNTA"`**.  
+* **Motivo:** Activa la **Fase 2 (Interrogatorio)**.  
+* **¡Crucial\!** Implementa la **Validación Robusta (Autocorrección)**: Si la respuesta de M1 no es exactamente "Sí", "No", o "No relevante", el código debe reintentar la llamada a la API, inyectando un mensaje de sistema que fuerce al Maestro a corregir su respuesta. (Esto garantiza la estabilidad del bucle de juego.)
+
+### **3.3. `_handle_final_solution` (TAREA: EVALUAR)**
+
+* **Implementación:** Construye el prompt inyectando la `self.secret_story` y la solución del jugador, precedidas por **`"TAREA: EVALUAR"`**.  
+* **Motivo:** Esto activa la **Fase 3 (Evaluación)** y obliga al Maestro a seguir el formato de salida estricto (`Veredicto:` y revelación de la historia).
+
+Por favor, aplica estos cambios para que la lógica de la aplicación esté alineada con la nueva arquitectura de comunicación por fases del Maestro.
